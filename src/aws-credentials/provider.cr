@@ -32,10 +32,14 @@ module Aws::Credentials
 
   # `Providers` provides credentials from multiple `Provider` and holds until expiration of credential.
   #
-  # Credential expiration is reached then reload credentials from given `Provider`s.
+  # Credentials are reloaded from given `Provider`s once they are about to expire,
+  # i.e. `expiration_buffer` before their actual expiration time.
   class Providers
     include Provider
     include CredentialsWithExpiration
+
+    # Refresh credentials ahead of expiration, similar to what the official AWS SDKs do.
+    DEFAULT_EXPIRATION_BUFFER = 5.minutes
 
     @resolved : Credentials? = nil
     @logger : Log
@@ -45,6 +49,7 @@ module Aws::Credentials
     def initialize(
       @providers : Array(Provider),
       @current_time_provider : Proc(Time) = ->{ Time.utc },
+      @expiration_buffer : Time::Span = DEFAULT_EXPIRATION_BUFFER,
       logger : Log = ::Log.for("AWS.Credentials")
     )
       @logger = logger.for({{ @type.name.split("::")[-1] }})
@@ -54,8 +59,8 @@ module Aws::Credentials
       creds = @resolved
       if !creds
         @logger.debug { "No credentials are available, resolving new credentials" }
-      elsif expired?(creds, @current_time_provider)
-        @logger.debug { "The credentials have expired, resolving new credentials" }
+      elsif expired?(creds, @current_time_provider, @expiration_buffer)
+        @logger.debug { "The credentials have expired or are about to expire, resolving new credentials" }
       else
         return creds
       end

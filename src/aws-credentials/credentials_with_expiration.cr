@@ -5,9 +5,13 @@ module Aws::Credentials
       expired?(maybe_resolved_credentials, current_time_provider)
     end
 
-    def expired?(credentials : Credentials, current_time_provider : Proc(Time))
+    # Returns `true` if the credentials expire within `buffer` from now.
+    #
+    # A non-zero `buffer` lets callers refresh credentials ahead of time, so
+    # they don't expire while a request signed with them is still in flight.
+    def expired?(credentials : Credentials, current_time_provider : Proc(Time), buffer : Time::Span = Time::Span.zero)
       credentials.expiration.try { |exp|
-        exp.to_unix <= current_time_provider.call.to_unix
+        exp - buffer <= current_time_provider.call
       } || false
     end
   end
