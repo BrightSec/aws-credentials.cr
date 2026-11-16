@@ -165,6 +165,52 @@ module Aws::Credentials
       actual.hash.should_not eq(reprovided.hash)
     end
 
+    it "refreshes when the credentials are about to expire" do
+      current = Time.parse_iso8601("2019-05-20T23:00:00Z")
+      e = ProviderE.new(current)
+      provider = Providers.new(
+        providers: [e] of Provider,
+        current_time_provider: ->{ current },
+      )
+      actual = provider.credentials
+      actual.access_key_id.should eq "ACCESSKEY_E1"
+
+      # 3 minutes before expiration, within the default buffer
+      current2 = Time.parse_iso8601("2019-05-20T23:57:00Z")
+      e.expiration = Time.parse_iso8601("2019-05-21T01:00:00Z")
+      provider.current_time_provider = ->{ current2 }
+      reprovided = provider.credentials
+      reprovided.expiration.should eq Time.parse_iso8601("2019-05-21T01:00:00Z")
+      actual.hash.should_not eq(reprovided.hash)
+    end
+
+    it "doesn't refresh before the buffer when a custom buffer is given" do
+      current = Time.parse_iso8601("2019-05-20T23:00:00Z")
+      e = ProviderE.new(current)
+      provider = Providers.new(
+        providers: [e] of Provider,
+        current_time_provider: ->{ current },
+        expiration_buffer: 1.minute,
+      )
+      actual = provider.credentials
+
+      current2 = Time.parse_iso8601("2019-05-20T23:57:00Z")
+      provider.current_time_provider = ->{ current2 }
+      reprovided = provider.credentials
+      actual.hash.should eq(reprovided.hash)
+    end
+
+    it "uses freshly resolved credentials even if they expire within the buffer" do
+      current = Time.parse_iso8601("2019-05-20T23:58:00Z")
+      e = ProviderE.new(current)
+      provider = Providers.new(
+        providers: [e] of Provider,
+        current_time_provider: ->{ current },
+      )
+      actual = provider.credentials
+      actual.access_key_id.should eq "ACCESSKEY_E1"
+    end
+
     it "resolve credentials from B after a refresh" do
       provider = Providers.new([ProviderC.new, ProviderB.new, ProviderA.new] of Provider)
       actual = provider.credentials
